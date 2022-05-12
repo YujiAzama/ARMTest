@@ -13,7 +13,7 @@ param virtualMachinesName string = 'test-vm'
 param networkInterfacesName string = 'test-interface'
 param networkSecurityGroupsName string = 'test-sg'
 
-resource virtualMachinesName_resource 'Microsoft.Compute/virtualMachines@2021-11-01' = {
+resource virtualMachinesName_resource 'Microsoft.Compute/virtualMachines@2021-07-01' = {
   name: virtualMachinesName
   location: location
   properties: {
@@ -71,7 +71,7 @@ resource virtualMachinesName_resource 'Microsoft.Compute/virtualMachines@2021-11
   }
 }
 
-resource virtualMachinesName_config_app 'Microsoft.Compute/virtualMachines/extensions@2021-11-01' = {
+resource virtualMachinesName_config_app 'Microsoft.Compute/virtualMachines/extensions@2021-03-01' = {
   parent: virtualMachinesName_resource
   name: 'config-app'
   location: location
@@ -156,7 +156,7 @@ resource virtualNetworksName_resource 'Microsoft.Network/virtualNetworks@2020-11
   }
 }
 
-resource networkSecurityGroupsName_AllowBastionInbound 'Microsoft.Network/networkSecurityGroups/securityRules@2021-08-01' = {
+resource networkSecurityGroupsName_AllowBastionInbound 'Microsoft.Network/networkSecurityGroups/securityRules@2020-11-01' = {
   parent: networkSecurityGroupsName_resource
   name: 'AllowBastionInbound'
   properties: {
