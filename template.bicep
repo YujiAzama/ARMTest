@@ -1,20 +1,32 @@
 @description('Specifies the location for resources.')
 param location string = resourceGroup().location
 
+// Settings for Virtual Machine
 @description('Username for the Virtual Machine.')
 param adminUsername string = 'testuser'
-
+// P@ssw0rd12345678-
 @description('Password for the Virtual Machine.')
 @minLength(12)
 @secure()
 param adminPassword string
-param virtualNetworksName string = 'test-vnet'
-param virtualMachinesName string = 'test-vm'
-param networkInterfacesName string = 'test-interface'
-param networkSecurityGroupsName string = 'test-sg'
+param virtualNetworkName string = 'test-vnet'
+param vmName string = 'test-vm'
+param vmNetworkInterfaceName string = 'test-interface'
+param networkSecurityGroupName string = 'test-sg'
 
-resource virtualMachinesName_resource 'Microsoft.Compute/virtualMachines@2021-07-01' = {
-  name: virtualMachinesName
+// CosmosDB Settings
+@description('Cosmos DB account name')
+param cosmosDBAccountName string = 'cosmos-${uniqueString(resourceGroup().id)}'
+@description('The name for the Core (SQL) database')
+param databaseName string = 'opendata'
+
+// DNS Settings for CosmosDB
+param cosmosDBPrivateEndpointName string = 'CosmosDBPrivateEndpoint'
+param cosmosDBPrivateDnsZoneName string = 'privatelink.documents.azure.com'
+param cosmosDBNetworkInterfaceName string = 'test-interface-cosmosdb'
+
+resource virtualMachine 'Microsoft.Compute/virtualMachines@2021-07-01' = {
+  name: vmName
   location: location
   properties: {
     hardwareProfile: {
@@ -29,7 +41,7 @@ resource virtualMachinesName_resource 'Microsoft.Compute/virtualMachines@2021-07
       }
       osDisk: {
         osType: 'Windows'
-        name: '${virtualMachinesName}_OsDisk_1_34bf20d57acd4a7386a9d772306e7814'
+        name: '${vmName}_OsDisk_1_34bf20d57acd4a7386a9d772306e7814'
         createOption: 'FromImage'
         caching: 'ReadWrite'
         managedDisk: {
@@ -41,7 +53,7 @@ resource virtualMachinesName_resource 'Microsoft.Compute/virtualMachines@2021-07
       dataDisks: []
     }
     osProfile: {
-      computerName: virtualMachinesName
+      computerName: vmName
       adminUsername: adminUsername
       adminPassword: adminPassword
       windowsConfiguration: {
@@ -59,7 +71,7 @@ resource virtualMachinesName_resource 'Microsoft.Compute/virtualMachines@2021-07
     networkProfile: {
       networkInterfaces: [
         {
-          id: networkInterfacesName_resource.id
+          id: vmNetworkInterface.id
         }
       ]
     }
@@ -71,9 +83,9 @@ resource virtualMachinesName_resource 'Microsoft.Compute/virtualMachines@2021-07
   }
 }
 
-resource virtualMachinesName_config_app 'Microsoft.Compute/virtualMachines/extensions@2021-03-01' = {
-  parent: virtualMachinesName_resource
-  name: 'config-app'
+resource vmSetupScript 'Microsoft.Compute/virtualMachines/extensions@2021-03-01' = {
+  parent: virtualMachine
+  name: 'vm-setup-script'
   location: location
   properties: {
     publisher: 'Microsoft.Compute'
@@ -92,8 +104,8 @@ resource virtualMachinesName_config_app 'Microsoft.Compute/virtualMachines/exten
   }
 }
 
-resource networkSecurityGroupsName_resource 'Microsoft.Network/networkSecurityGroups@2020-11-01' = {
-  name: networkSecurityGroupsName
+resource networkSecurityGroup 'Microsoft.Network/networkSecurityGroups@2020-11-01' = {
+  name: networkSecurityGroupName
   location: location
   tags: {
     org: 'ool'
@@ -123,8 +135,8 @@ resource networkSecurityGroupsName_resource 'Microsoft.Network/networkSecurityGr
   }
 }
 
-resource virtualNetworksName_resource 'Microsoft.Network/virtualNetworks@2020-11-01' = {
-  name: virtualNetworksName
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2020-11-01' = {
+  name: virtualNetworkName
   location: location
   properties: {
     addressSpace: {
@@ -156,8 +168,8 @@ resource virtualNetworksName_resource 'Microsoft.Network/virtualNetworks@2020-11
   }
 }
 
-resource networkSecurityGroupsName_AllowBastionInbound 'Microsoft.Network/networkSecurityGroups/securityRules@2020-11-01' = {
-  parent: networkSecurityGroupsName_resource
+resource allowBastionInboundSecurityRule 'Microsoft.Network/networkSecurityGroups/securityRules@2020-11-01' = {
+  parent: networkSecurityGroup
   name: 'AllowBastionInbound'
   properties: {
     protocol: '*'
@@ -177,8 +189,8 @@ resource networkSecurityGroupsName_AllowBastionInbound 'Microsoft.Network/networ
   }
 }
 
-resource virtualNetworksName_VMSubnet 'Microsoft.Network/virtualNetworks/subnets@2020-11-01' = {
-  parent: virtualNetworksName_resource
+resource vmSubnet 'Microsoft.Network/virtualNetworks/subnets@2020-11-01' = {
+  parent: virtualNetwork
   name: 'VMSubnet'
   properties: {
     addressPrefix: '10.0.1.0/28'
@@ -196,8 +208,8 @@ resource virtualNetworksName_VMSubnet 'Microsoft.Network/virtualNetworks/subnets
   }
 }
 
-resource networkInterfacesName_resource 'Microsoft.Network/networkInterfaces@2020-11-01' = {
-  name: networkInterfacesName
+resource vmNetworkInterface 'Microsoft.Network/networkInterfaces@2020-11-01' = {
+  name: vmNetworkInterfaceName
   location: location
   properties: {
     ipConfigurations: [
@@ -207,7 +219,7 @@ resource networkInterfacesName_resource 'Microsoft.Network/networkInterfaces@202
           privateIPAddress: '10.0.1.5'
           privateIPAllocationMethod: 'Dynamic'
           subnet: {
-            id: virtualNetworksName_VMSubnet.id
+            id: vmSubnet.id
           }
           primary: true
           privateIPAddressVersion: 'IPv4'
@@ -220,7 +232,313 @@ resource networkInterfacesName_resource 'Microsoft.Network/networkInterfaces@202
     enableAcceleratedNetworking: false
     enableIPForwarding: false
     networkSecurityGroup: {
-      id: networkSecurityGroupsName_resource.id
+      id: networkSecurityGroup.id
+    }
+  }
+}
+
+resource cosmosDBAccount 'Microsoft.DocumentDB/databaseAccounts@2021-07-01-preview' = {
+  name: toLower(cosmosDBAccountName)
+  location: location
+  properties: {
+    //enableFreeTier: true
+    databaseAccountOfferType: 'Standard'
+    consistencyPolicy: {
+      defaultConsistencyLevel: 'Session'
+    }
+    locations: [
+      {
+        locationName: location
+      }
+    ]
+    createMode: 'Default'
+  }
+}
+
+resource cosmosDB 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2021-07-01-preview' = {
+  parent: cosmosDBAccount
+  name: databaseName
+  properties: {
+    resource: {
+      id: databaseName
+    }
+  }
+}
+
+resource benokiContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2021-07-01-preview' = {
+  parent: cosmosDB
+  name: 'benoki'
+  properties: {
+    resource: {
+      id: 'benoki'
+      indexingPolicy: {
+        indexingMode: 'consistent'
+        automatic: true
+        includedPaths: [
+          {
+            path: '/*'
+          }
+        ]
+        excludedPaths: [
+          {
+            path: '/"_etag"/?'
+          }
+        ]
+      }
+      partitionKey: {
+        paths: [
+          '/riverName'
+        ]
+        kind: 'Hash'
+      }
+      uniqueKeyPolicy: {
+        uniqueKeys: []
+      }
+      conflictResolutionPolicy: {
+        mode: 'LastWriterWins'
+        conflictResolutionPath: '/_ts'
+      }
+    }
+  }
+}
+
+resource hukutiContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2021-07-01-preview' = {
+  parent: cosmosDB
+  name: 'hukuti'
+  properties: {
+    resource: {
+      id: 'hukuti'
+      indexingPolicy: {
+        indexingMode: 'consistent'
+        automatic: true
+        includedPaths: [
+          {
+            path: '/*'
+          }
+        ]
+        excludedPaths: [
+          {
+            path: '/"_etag"/?'
+          }
+        ]
+      }
+      partitionKey: {
+        paths: [
+          '/riverName'
+        ]
+        kind: 'Hash'
+      }
+      uniqueKeyPolicy: {
+        uniqueKeys: []
+      }
+      conflictResolutionPolicy: {
+        mode: 'LastWriterWins'
+        conflictResolutionPath: '/_ts'
+      }
+    }
+  }
+}
+
+resource benokiThroughputSettings 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/throughputSettings@2021-07-01-preview' = {
+  parent: benokiContainer
+  name: 'default'
+  properties: {
+    resource: {
+      throughput: 400
+    }
+  }
+}
+
+resource hukutiThroughputSettings 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/throughputSettings@2021-07-01-preview' = {
+  parent: hukutiContainer
+  name: 'default'
+  properties: {
+    resource: {
+      throughput: 400
+    }
+  }
+}
+
+resource sqlRoleDefinitions_00000000_0000_0000_0000_000000000001 'Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions@2021-07-01-preview' = {
+  parent: cosmosDBAccount
+  name: '00000000-0000-0000-0000-000000000001'
+  properties: {
+    roleName: 'Cosmos DB Built-in Data Reader'
+    type: 'BuiltInRole'
+    assignableScopes: [
+      cosmosDBAccount.id
+    ]
+    permissions: [
+      {
+        dataActions: [
+          'Microsoft.DocumentDB/databaseAccounts/readMetadata'
+          'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/executeQuery'
+          'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/readChangeFeed'
+          'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/read'
+        ]
+        notDataActions: []
+      }
+    ]
+  }
+}
+
+resource sqlRoleDefinitions_00000000_0000_0000_0000_000000000002 'Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions@2021-07-01-preview' = {
+  parent: cosmosDBAccount
+  name: '00000000-0000-0000-0000-000000000002'
+  properties: {
+    roleName: 'Cosmos DB Built-in Data Contributor'
+    type: 'BuiltInRole'
+    assignableScopes: [
+      cosmosDBAccount.id
+    ]
+    permissions: [
+      {
+        dataActions: [
+          'Microsoft.DocumentDB/databaseAccounts/readMetadata'
+          'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/*'
+          'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/*'
+        ]
+        notDataActions: []
+      }
+    ]
+  }
+}
+
+resource cosmosDBPrivateEndpoint 'Microsoft.Network/privateEndpoints@2020-11-01' = {
+  name: cosmosDBPrivateEndpointName
+  location: location
+  properties: {
+    privateLinkServiceConnections: [
+      {
+        name: cosmosDBPrivateEndpointName
+        properties: {
+          privateLinkServiceId: cosmosDBAccount.id
+          groupIds: [
+            'Sql'
+          ]
+          privateLinkServiceConnectionState: {
+            status: 'Approved'
+            actionsRequired: 'None'
+          }
+        }
+      }
+    ]
+    manualPrivateLinkServiceConnections: []
+    subnet: {
+      id: '${virtualNetwork.id}/subnets/VMSubnet'
+    }
+    customDnsConfigs: [
+      {
+        fqdn: 'ool-dataops.documents.azure.com'
+        ipAddresses: [
+          '10.0.1.7'
+        ]
+      }
+      {
+        fqdn: 'ool-dataops-japaneast.documents.azure.com'
+        ipAddresses: [
+          '10.0.1.8'
+        ]
+      }
+    ]
+  }
+}
+
+resource cosmosDBNetworkInterface 'Microsoft.Network/networkInterfaces@2020-11-01' = {
+  name: cosmosDBNetworkInterfaceName
+  location: location
+  properties: {
+    ipConfigurations: [
+      {
+        name: 'privateEndpointIpConfig.9ab0d39c-f07d-4f95-9c37-05d0c6dccfe8'
+        properties: {
+          privateIPAddress: '10.0.1.7'
+          privateIPAllocationMethod: 'Dynamic'
+          subnet: {
+            id: vmSubnet.id
+          }
+          primary: true
+          privateIPAddressVersion: 'IPv4'
+        }
+      }
+      {
+        name: 'privateEndpointIpConfig.222ff169-5ba0-464b-bff6-2e883ec5f0c9'
+        properties: {
+          privateIPAddress: '10.0.1.8'
+          privateIPAllocationMethod: 'Dynamic'
+          subnet: {
+            id: vmSubnet.id
+          }
+          primary: false
+          privateIPAddressVersion: 'IPv4'
+        }
+      }
+    ]
+    dnsSettings: {
+      dnsServers: []
+    }
+    enableAcceleratedNetworking: false
+    enableIPForwarding: false
+  }
+}
+
+resource cosmosDBPrivateDnsZone 'Microsoft.Network/privateDnsZones@2018-09-01' = {
+  name: cosmosDBPrivateDnsZoneName
+  location: 'global'
+  properties: {}
+}
+
+resource privateDnsZoneA01 'Microsoft.Network/privateDnsZones/A@2018-09-01' = {
+  parent: cosmosDBPrivateDnsZone
+  name: 'ool-dataops'
+  properties: {
+    ttl: 3600
+    aRecords: [
+      {
+        ipv4Address: '10.0.1.7'
+      }
+    ]
+  }
+}
+
+resource privateDnsZoneA02 'Microsoft.Network/privateDnsZones/A@2018-09-01' = {
+  parent: cosmosDBPrivateDnsZone
+  name: 'ool-dataops-japaneast'
+  properties: {
+    ttl: 3600
+    aRecords: [
+      {
+        ipv4Address: '10.0.1.8'
+      }
+    ]
+  }
+}
+
+resource privateDnsZoneSOA 'Microsoft.Network/privateDnsZones/SOA@2018-09-01' = {
+  parent: cosmosDBPrivateDnsZone
+  name: '@'
+  properties: {
+    ttl: 3600
+    soaRecord: {
+      email: 'azureprivatedns-host.microsoft.com'
+      expireTime: 2419200
+      host: 'azureprivatedns.net'
+      minimumTtl: 10
+      refreshTime: 3600
+      retryTime: 300
+      serialNumber: 1
+    }
+  }
+}
+
+resource virtualNetworkLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2018-09-01' = {
+  parent: cosmosDBPrivateDnsZone
+  name: 'vmpruztkk5r5d'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
     }
   }
 }
