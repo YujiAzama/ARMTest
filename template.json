@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.6.11.53198",
-      "templateHash": "3928855353173136140"
+      "version": "0.6.18.56646",
+      "templateHash": "15442733576046493890"
     }
   },
   "parameters": {
@@ -30,28 +30,54 @@
         "description": "Password for the Virtual Machine."
       }
     },
-    "virtualNetworksName": {
+    "virtualNetworkName": {
       "type": "string",
       "defaultValue": "test-vnet"
     },
-    "virtualMachinesName": {
+    "vmName": {
       "type": "string",
       "defaultValue": "test-vm"
     },
-    "networkInterfacesName": {
+    "vmNetworkInterfaceName": {
       "type": "string",
       "defaultValue": "test-interface"
     },
-    "networkSecurityGroupsName": {
+    "networkSecurityGroupName": {
       "type": "string",
       "defaultValue": "test-sg"
+    },
+    "cosmosDBAccountName": {
+      "type": "string",
+      "defaultValue": "[format('cosmos-{0}', uniqueString(resourceGroup().id))]",
+      "metadata": {
+        "description": "Cosmos DB account name"
+      }
+    },
+    "databaseName": {
+      "type": "string",
+      "defaultValue": "opendata",
+      "metadata": {
+        "description": "The name for the Core (SQL) database"
+      }
+    },
+    "cosmosDBPrivateEndpointName": {
+      "type": "string",
+      "defaultValue": "CosmosDBPrivateEndpoint"
+    },
+    "cosmosDBPrivateDnsZoneName": {
+      "type": "string",
+      "defaultValue": "privatelink.documents.azure.com"
+    },
+    "cosmosDBNetworkInterfaceName": {
+      "type": "string",
+      "defaultValue": "test-interface-cosmosdb"
     }
   },
   "resources": [
     {
       "type": "Microsoft.Compute/virtualMachines",
       "apiVersion": "2021-07-01",
-      "name": "[parameters('virtualMachinesName')]",
+      "name": "[parameters('vmName')]",
       "location": "[parameters('location')]",
       "properties": {
         "hardwareProfile": {
@@ -66,7 +92,7 @@
           },
           "osDisk": {
             "osType": "Windows",
-            "name": "[format('{0}_OsDisk_1_34bf20d57acd4a7386a9d772306e7814', parameters('virtualMachinesName'))]",
+            "name": "[format('{0}_OsDisk_1_34bf20d57acd4a7386a9d772306e7814', parameters('vmName'))]",
             "createOption": "FromImage",
             "caching": "ReadWrite",
             "managedDisk": {
@@ -78,7 +104,7 @@
           "dataDisks": []
         },
         "osProfile": {
-          "computerName": "[parameters('virtualMachinesName')]",
+          "computerName": "[parameters('vmName')]",
           "adminUsername": "[parameters('adminUsername')]",
           "adminPassword": "[parameters('adminPassword')]",
           "windowsConfiguration": {
@@ -96,7 +122,7 @@
         "networkProfile": {
           "networkInterfaces": [
             {
-              "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfacesName'))]"
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('vmNetworkInterfaceName'))]"
             }
           ]
         },
@@ -107,13 +133,13 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfacesName'))]"
+        "[resourceId('Microsoft.Network/networkInterfaces', parameters('vmNetworkInterfaceName'))]"
       ]
     },
     {
       "type": "Microsoft.Compute/virtualMachines/extensions",
       "apiVersion": "2021-03-01",
-      "name": "[format('{0}/{1}', parameters('virtualMachinesName'), 'config-app')]",
+      "name": "[format('{0}/{1}', parameters('vmName'), 'vm-setup-script')]",
       "location": "[parameters('location')]",
       "properties": {
         "publisher": "Microsoft.Compute",
@@ -131,13 +157,13 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Compute/virtualMachines', parameters('virtualMachinesName'))]"
+        "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
       ]
     },
     {
       "type": "Microsoft.Network/networkSecurityGroups",
       "apiVersion": "2020-11-01",
-      "name": "[parameters('networkSecurityGroupsName')]",
+      "name": "[parameters('networkSecurityGroupName')]",
       "location": "[parameters('location')]",
       "tags": {
         "org": "ool"
@@ -169,7 +195,7 @@
     {
       "type": "Microsoft.Network/virtualNetworks",
       "apiVersion": "2020-11-01",
-      "name": "[parameters('virtualNetworksName')]",
+      "name": "[parameters('virtualNetworkName')]",
       "location": "[parameters('location')]",
       "properties": {
         "addressSpace": {
@@ -203,7 +229,7 @@
     {
       "type": "Microsoft.Network/networkSecurityGroups/securityRules",
       "apiVersion": "2020-11-01",
-      "name": "[format('{0}/{1}', parameters('networkSecurityGroupsName'), 'AllowBastionInbound')]",
+      "name": "[format('{0}/{1}', parameters('networkSecurityGroupName'), 'AllowBastionInbound')]",
       "properties": {
         "protocol": "*",
         "sourcePortRange": "*",
@@ -221,13 +247,13 @@
         "destinationAddressPrefixes": []
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupsName'))]"
+        "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupName'))]"
       ]
     },
     {
       "type": "Microsoft.Network/virtualNetworks/subnets",
       "apiVersion": "2020-11-01",
-      "name": "[format('{0}/{1}', parameters('virtualNetworksName'), 'VMSubnet')]",
+      "name": "[format('{0}/{1}', parameters('virtualNetworkName'), 'VMSubnet')]",
       "properties": {
         "addressPrefix": "10.0.1.0/28",
         "serviceEndpoints": [
@@ -243,13 +269,13 @@
         "privateLinkServiceNetworkPolicies": "Enabled"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworksName'))]"
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
       ]
     },
     {
       "type": "Microsoft.Network/networkInterfaces",
       "apiVersion": "2020-11-01",
-      "name": "[parameters('networkInterfacesName')]",
+      "name": "[parameters('vmNetworkInterfaceName')]",
       "location": "[parameters('location')]",
       "properties": {
         "ipConfigurations": [
@@ -259,7 +285,7 @@
               "privateIPAddress": "10.0.1.5",
               "privateIPAllocationMethod": "Dynamic",
               "subnet": {
-                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworksName'), 'VMSubnet')]"
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), 'VMSubnet')]"
               },
               "primary": true,
               "privateIPAddressVersion": "IPv4"
@@ -272,12 +298,362 @@
         "enableAcceleratedNetworking": false,
         "enableIPForwarding": false,
         "networkSecurityGroup": {
-          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupsName'))]"
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupName'))]"
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupsName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworksName'), 'VMSubnet')]"
+        "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), 'VMSubnet')]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2021-07-01-preview",
+      "name": "[toLower(parameters('cosmosDBAccountName'))]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session"
+        },
+        "locations": [
+          {
+            "locationName": "[parameters('location')]"
+          }
+        ],
+        "createMode": "Default"
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "2021-07-01-preview",
+      "name": "[format('{0}/{1}', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'))]",
+      "properties": {
+        "resource": {
+          "id": "[parameters('databaseName')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(parameters('cosmosDBAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2021-07-01-preview",
+      "name": "[format('{0}/{1}/{2}', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'), 'benoki')]",
+      "properties": {
+        "resource": {
+          "id": "benoki",
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ]
+          },
+          "partitionKey": {
+            "paths": [
+              "/riverName"
+            ],
+            "kind": "Hash"
+          },
+          "uniqueKeyPolicy": {
+            "uniqueKeys": []
+          },
+          "conflictResolutionPolicy": {
+            "mode": "LastWriterWins",
+            "conflictResolutionPath": "/_ts"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2021-07-01-preview",
+      "name": "[format('{0}/{1}/{2}', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'), 'hukuti')]",
+      "properties": {
+        "resource": {
+          "id": "hukuti",
+          "indexingPolicy": {
+            "indexingMode": "consistent",
+            "automatic": true,
+            "includedPaths": [
+              {
+                "path": "/*"
+              }
+            ],
+            "excludedPaths": [
+              {
+                "path": "/\"_etag\"/?"
+              }
+            ]
+          },
+          "partitionKey": {
+            "paths": [
+              "/riverName"
+            ],
+            "kind": "Hash"
+          },
+          "uniqueKeyPolicy": {
+            "uniqueKeys": []
+          },
+          "conflictResolutionPolicy": {
+            "mode": "LastWriterWins",
+            "conflictResolutionPath": "/_ts"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/throughputSettings",
+      "apiVersion": "2021-07-01-preview",
+      "name": "[format('{0}/{1}/{2}/{3}', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'), 'benoki', 'default')]",
+      "properties": {
+        "resource": {
+          "throughput": 400
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'), 'benoki')]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/throughputSettings",
+      "apiVersion": "2021-07-01-preview",
+      "name": "[format('{0}/{1}/{2}/{3}', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'), 'hukuti', 'default')]",
+      "properties": {
+        "resource": {
+          "throughput": 400
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers', toLower(parameters('cosmosDBAccountName')), parameters('databaseName'), 'hukuti')]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions",
+      "apiVersion": "2021-07-01-preview",
+      "name": "[format('{0}/{1}', toLower(parameters('cosmosDBAccountName')), '00000000-0000-0000-0000-000000000001')]",
+      "properties": {
+        "roleName": "Cosmos DB Built-in Data Reader",
+        "type": "BuiltInRole",
+        "assignableScopes": [
+          "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(parameters('cosmosDBAccountName')))]"
+        ],
+        "permissions": [
+          {
+            "dataActions": [
+              "Microsoft.DocumentDB/databaseAccounts/readMetadata",
+              "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/executeQuery",
+              "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/readChangeFeed",
+              "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/read"
+            ],
+            "notDataActions": []
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(parameters('cosmosDBAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions",
+      "apiVersion": "2021-07-01-preview",
+      "name": "[format('{0}/{1}', toLower(parameters('cosmosDBAccountName')), '00000000-0000-0000-0000-000000000002')]",
+      "properties": {
+        "roleName": "Cosmos DB Built-in Data Contributor",
+        "type": "BuiltInRole",
+        "assignableScopes": [
+          "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(parameters('cosmosDBAccountName')))]"
+        ],
+        "permissions": [
+          {
+            "dataActions": [
+              "Microsoft.DocumentDB/databaseAccounts/readMetadata",
+              "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/*",
+              "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers/items/*"
+            ],
+            "notDataActions": []
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(parameters('cosmosDBAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints",
+      "apiVersion": "2020-11-01",
+      "name": "[parameters('cosmosDBPrivateEndpointName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "privateLinkServiceConnections": [
+          {
+            "name": "[parameters('cosmosDBPrivateEndpointName')]",
+            "properties": {
+              "privateLinkServiceId": "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(parameters('cosmosDBAccountName')))]",
+              "groupIds": [
+                "Sql"
+              ],
+              "privateLinkServiceConnectionState": {
+                "status": "Approved",
+                "actionsRequired": "None"
+              }
+            }
+          }
+        ],
+        "manualPrivateLinkServiceConnections": [],
+        "subnet": {
+          "id": "[format('{0}/subnets/VMSubnet', resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName')))]"
+        },
+        "customDnsConfigs": [
+          {
+            "fqdn": "ool-dataops.documents.azure.com",
+            "ipAddresses": [
+              "10.0.1.7"
+            ]
+          },
+          {
+            "fqdn": "ool-dataops-japaneast.documents.azure.com",
+            "ipAddresses": [
+              "10.0.1.8"
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', toLower(parameters('cosmosDBAccountName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2020-11-01",
+      "name": "[parameters('cosmosDBNetworkInterfaceName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "privateEndpointIpConfig.9ab0d39c-f07d-4f95-9c37-05d0c6dccfe8",
+            "properties": {
+              "privateIPAddress": "10.0.1.7",
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), 'VMSubnet')]"
+              },
+              "primary": true,
+              "privateIPAddressVersion": "IPv4"
+            }
+          },
+          {
+            "name": "privateEndpointIpConfig.222ff169-5ba0-464b-bff6-2e883ec5f0c9",
+            "properties": {
+              "privateIPAddress": "10.0.1.8",
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), 'VMSubnet')]"
+              },
+              "primary": false,
+              "privateIPAddressVersion": "IPv4"
+            }
+          }
+        ],
+        "dnsSettings": {
+          "dnsServers": []
+        },
+        "enableAcceleratedNetworking": false,
+        "enableIPForwarding": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), 'VMSubnet')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "2018-09-01",
+      "name": "[parameters('cosmosDBPrivateDnsZoneName')]",
+      "location": "global",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/A",
+      "apiVersion": "2018-09-01",
+      "name": "[format('{0}/{1}', parameters('cosmosDBPrivateDnsZoneName'), 'ool-dataops')]",
+      "properties": {
+        "ttl": 3600,
+        "aRecords": [
+          {
+            "ipv4Address": "10.0.1.7"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', parameters('cosmosDBPrivateDnsZoneName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/A",
+      "apiVersion": "2018-09-01",
+      "name": "[format('{0}/{1}', parameters('cosmosDBPrivateDnsZoneName'), 'ool-dataops-japaneast')]",
+      "properties": {
+        "ttl": 3600,
+        "aRecords": [
+          {
+            "ipv4Address": "10.0.1.8"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', parameters('cosmosDBPrivateDnsZoneName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/SOA",
+      "apiVersion": "2018-09-01",
+      "name": "[format('{0}/{1}', parameters('cosmosDBPrivateDnsZoneName'), '@')]",
+      "properties": {
+        "ttl": 3600,
+        "soaRecord": {
+          "email": "azureprivatedns-host.microsoft.com",
+          "expireTime": 2419200,
+          "host": "azureprivatedns.net",
+          "minimumTtl": 10,
+          "refreshTime": 3600,
+          "retryTime": 300,
+          "serialNumber": 1
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', parameters('cosmosDBPrivateDnsZoneName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      "apiVersion": "2018-09-01",
+      "name": "[format('{0}/{1}', parameters('cosmosDBPrivateDnsZoneName'), 'vmpruztkk5r5d')]",
+      "location": "global",
+      "properties": {
+        "registrationEnabled": false,
+        "virtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', parameters('cosmosDBPrivateDnsZoneName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]"
       ]
     }
   ]
