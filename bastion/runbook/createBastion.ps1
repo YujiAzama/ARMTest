@@ -5,18 +5,6 @@ param (
 
     [Parameter(Mandatory=$true)]
     [string]
-    $storageAccount,
-
-    [Parameter(Mandatory=$true)]
-    [string]
-    $storageAccountKey,
-
-    [Parameter(Mandatory=$true)]
-    [string]
-    $storageFileName,
-
-    [Parameter(Mandatory=$true)]
-    [string]
     $userAssignedManagedIdentity
 )
 
@@ -34,19 +22,11 @@ $AzureContext = (Connect-AzAccount -Identity -AccountId $identity.ClientId).cont
 $AzureContext = Set-AzContext -SubscriptionName $AzureContext.Subscription `
     -DefaultProfile $AzureContext
 
-
-# Create a new context
-$Context = New-AzStorageContext -StorageAccountName $storageAccount -StorageAccountKey $storageAccountKey
-
-Get-AzStorageFileContent `
-    -ShareName 'bastion' `
-    -Context $Context `
-    -path 'Bastiontemplate.json' `
-    -Destination 'C:\Temp' -Force
-
-$TemplateFile = Join-Path -Path 'C:\Temp' -ChildPath $storageFileName
+# Download template.json
+Invoke-WebRequest "https://raw.githubusercontent.com/YujiAzama/ARMTest/main/bastion/template.json" -OutFile "C:\Temp\template.json"
 
 # Deploy the bastion
 New-AzResourceGroupDeployment `
+    -Name testDeploy `
     -ResourceGroupName $resourceGroup `
-    -TemplateFile $TemplateFile `
+	-TemplateFile C:\Temp\template.json
